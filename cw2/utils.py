@@ -37,10 +37,11 @@ class ReplayBuffer():
         Returns:
             iterable (e.g. list) with objects sampled from buffer without replacement
         """
+        batch_size = min(batch_size, len(self.buffer))
         return random.sample(self.buffer, batch_size)
 
 class DQN(nn.Module):
-    def __init__(self, layer_sizes:list[int]):
+    def __init__(self, layer_sizes:list):
         """
         DQN initialisation
 
@@ -108,7 +109,7 @@ def update_target(target_dqn:DQN, policy_dqn:DQN):
 
 def loss(policy_dqn:DQN, target_dqn:DQN,
          states:torch.Tensor, actions:torch.Tensor,
-         rewards:torch.Tensor, next_states:torch.Tensor, dones:torch.Tensor)->torch.Tensor:
+         rewards:torch.Tensor, next_states:torch.Tensor, dones:torch.Tensor, ddqn:bool)->torch.Tensor:
     """Calculate Bellman error loss
     
     Args:
@@ -124,6 +125,11 @@ def loss(policy_dqn:DQN, target_dqn:DQN,
         Float scalar tensor with loss value
     """
 
-    bellman_targets = (~dones).reshape(-1)*(target_dqn(next_states)).max(1).values + rewards.reshape(-1)
+    if ddqn:
+        next_actions = torch.argmax(policy_dqn(next_states), 1).reshape(next_states.shape[0], 1)
+        next_q = target_dqn(next_states).gather(1, next_actions).reshape(-1)
+        bellman_targets = (~dones).reshape(-1)*next_q + rewards.reshape(-1)
+    else:
+        bellman_targets = (~dones).reshape(-1)*(target_dqn(next_states)).max(1).values + rewards.reshape(-1)
     q_values = policy_dqn(states).gather(1, actions).reshape(-1)
     return ((q_values - bellman_targets)**2).mean()
